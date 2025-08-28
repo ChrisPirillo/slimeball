@@ -1,0 +1,638 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <title>Slimeball - A Fast-Paced Arcade Sports Game</title>
+    
+    <meta name="description" content="Control your slime and compete in a fast-paced, glowing arcade sports game. Dodge, boost, and score against the CPU in this addictive, neon-fueled challenge. Play Slimeball now!">
+    <meta name="keywords" content="slimeball, arcade game, sports game, web game, html5 game, canvas game, neon, glow, soccer, hockey">
+    <meta name="author" content="Chris Pirillo">
+    <link rel="canonical" href="https://pirillo.com/arcade/slimeball.html">
+    
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+
+    <meta property="og:title" content="Slimeball - A Fast-Paced Arcade Sports Game">
+    <meta property="og:description" content="Control your slime and compete in a fast-paced, glowing arcade sports game. Dodge, boost, and score against the CPU in this addictive, neon-fueled challenge. Play Slimeball now!">
+    <meta property="og:url" content="https://pirillo.com/arcade/slimeball.html">
+    <meta property="og:type" content="website">
+    <meta property="og:image" content="https://pirillo.com/arcade/images/slimeball.png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:site" content="@ChrisPirillo">
+    <meta name="twitter:creator" content="@ChrisPirillo">
+    <meta name="twitter:title" content="Slimeball - A Fast-Paced Arcade Sports Game">
+    <meta name="twitter:description" content="Control your slime and compete in a fast-paced, glowing arcade sports game. Dodge, boost, and score against the CPU in this addictive, neon-fueled challenge.">
+    <meta name="twitter:image" content="https://pirillo.com/arcade/images/slimeball.png">
+
+    <link rel="preconnect" href="https://cdn.tailwindcss.com">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    
+    <link rel="preload" href="https://fonts.googleapis.com/css2?family=Londrina+Solid:wght@300;400;900&display=swap" as="style" onload="this.onload=null;this.rel='stylesheet'">
+    <noscript><link href="https://fonts.googleapis.com/css2?family=Londrina+Solid:wght@300;400;900&display=swap" rel="stylesheet"></noscript>
+    
+    <script src="https://cdn.tailwindcss.com" defer></script>
+    
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-1CQ4D3VQ3L"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-1CQ4D3VQ3L');
+    </script>
+
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "VideoGame",
+      "name": "Slimeball",
+      "url": "https://pirillo.com/arcade/slimeball.html",
+      "author": {
+        "@type": "Person",
+        "name": "Chris Pirillo"
+      },
+      "image": "https://pirillo.com/arcade/images/slimeball.png",
+      "description": "Control your slime and compete in a fast-paced, glowing arcade sports game. Dodge, boost, and score against the CPU in this addictive, neon-fueled challenge. Play Slimeball now!",
+      "applicationCategory": "Game",
+      "genre": ["Arcade game", "Sports game"],
+      "operatingSystem": "Web browser"
+    }
+    </script>
+    
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            height: 100%;
+            background-color: #1a0d1a;
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            background-color: #0d0d1a;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <main>
+        <canvas id="gameCanvas"></canvas>
+    </main>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        // Game Constants
+        const PLAYER_SPEED = 2.7;
+        const PLAYER_BOOST_SPEED = 4.5;
+        const BOOST_DURATION_FRAMES = 45;
+        const SLOWED_SPEED = 1.5;
+        const CPU_SPEED = 2.6;
+        const TRAIL_LIFESPAN = 70;
+        const STEAL_COOLDOWN_FRAMES = 60;
+        const NUM_CPUS = 2;
+
+        // Game State
+        let gameState = 'start';
+        let p1Score = 0;
+        let p2Score = 0;
+        let frameCount = 0;
+
+        // Game Objects
+        let player1, cpus, ball;
+        let playerRadius, ballRadius, goalWidth; // Scalable game dimensions
+        const keys = {};
+        
+        // Virtual Joystick State
+        const joystick = {
+            active: false,
+            radius: 50,
+            handleRadius: 25,
+            startX: 0,
+            startY: 0,
+            currentX: 0,
+            currentY: 0,
+            touchId: null
+        };
+
+        function initializeGameObjects() {
+            player1 = {
+                x: canvas.width / 4, y: canvas.height / 2, radius: playerRadius,
+                color: '#39FF14', colorLight: '#9dff8a', speed: PLAYER_SPEED, hasBall: false,
+                trail: [], stealCooldown: 0, boostTimer: 0,
+                animationOffset: Math.random() * 1000 // Unique animation offset
+            };
+            cpus = [];
+            for (let i = 0; i < NUM_CPUS; i++) {
+                const yPos = (canvas.height / (NUM_CPUS + 1)) * (i + 1);
+                cpus.push({
+                    x: (canvas.width / 4) * 3,
+                    y: yPos,
+                    initialY: yPos,
+                    radius: playerRadius,
+                    color: '#FF00FF', colorLight: '#ff99ff', speed: CPU_SPEED, hasBall: false,
+                    trail: [], stealCooldown: 0, boostTimer: 0,
+                    animationOffset: Math.random() * 1000 // Unique animation offset
+                });
+            }
+            ball = {
+                x: canvas.width / 2, y: canvas.height / 2, radius: ballRadius,
+                color: '#FFFFFF', vx: 0, vy: 0
+            };
+            resetBallVelocity();
+        }
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            
+            // Scale radii and other dimensions based on the smaller viewport dimension
+            const baseSize = Math.min(canvas.width, canvas.height);
+            playerRadius = baseSize * 0.035;
+            ballRadius = playerRadius * 0.45;
+            goalWidth = playerRadius * 1.5; // Make goal width proportional to player size
+
+            initializeGameObjects();
+        }
+
+        function update() {
+            if (gameState !== 'playing') return;
+            [player1, ...cpus].forEach(p => {
+                if (p.stealCooldown > 0) p.stealCooldown--;
+                if (p.boostTimer > 0) p.boostTimer--;
+            });
+
+            movePlayer(player1);
+            cpus.forEach(cpu => moveCPU(cpu, ball, player1));
+            handleCpuCollisions();
+            moveBall();
+            handleCollisions();
+            updateTrails();
+        }
+
+        function movePlayer(player) {
+            let onTrail = cpus.some(cpu => isOnOpponentTrail(player, cpu));
+            player.speed = player.boostTimer > 0 ? PLAYER_BOOST_SPEED : (onTrail ? SLOWED_SPEED : PLAYER_SPEED);
+            
+            let dx = 0, dy = 0;
+
+            // Keyboard controls
+            if (keys['ArrowUp'] || keys['w']) dy -= player.speed;
+            if (keys['ArrowDown'] || keys['s']) dy += player.speed;
+            if (keys['ArrowLeft'] || keys['a']) dx -= player.speed;
+            // CORRECTED: Changed dy to dx for right movement
+            if (keys['ArrowRight'] || keys['d']) dx += player.speed; 
+
+            // Joystick controls
+            if (joystick.active) {
+                const joyDx = joystick.currentX - joystick.startX;
+                const joyDy = joystick.currentY - joystick.startY;
+                const dist = Math.hypot(joyDx, joyDy);
+                if (dist > 0) {
+                    const moveRatio = Math.min(dist, joystick.radius) / joystick.radius;
+                    dx = (joyDx / dist) * player.speed * moveRatio;
+                    dy = (joyDy / dist) * player.speed * moveRatio;
+                }
+            }
+
+            const isOnOwnSide = player.x <= canvas.width / 2;
+            const isTryingToCross = (player.x + dx) > canvas.width / 2;
+            if (!player.hasBall && isOnOwnSide && isTryingToCross) dx = (canvas.width / 2) - player.x;
+
+            player.x += dx;
+            player.y += dy;
+
+            if (frameCount % 3 === 0 && (dx !== 0 || dy !== 0)) {
+                player.trail.push({ 
+                    x: player.x + (Math.random() - 0.5) * player.radius, 
+                    y: player.y + (Math.random() - 0.5) * player.radius, 
+                    life: TRAIL_LIFESPAN, 
+                    isBoost: player.boostTimer > 0 
+                });
+            }
+
+            player.x = Math.max(player.radius, Math.min(canvas.width - player.radius, player.x));
+            player.y = Math.max(player.radius, Math.min(canvas.height - player.radius, player.y));
+        }
+        
+        function moveCPU(cpu, ball, player) {
+            cpu.speed = cpu.boostTimer > 0 ? PLAYER_BOOST_SPEED : (isOnOpponentTrail(cpu, player) ? SLOWED_SPEED : CPU_SPEED);
+
+            let targetX, targetY;
+            if (cpu.hasBall) {
+                targetX = cpu.radius;
+                targetY = canvas.height / 2;
+            } else if (player.hasBall) {
+                targetX = player.x;
+                targetY = player.y;
+            } else {
+                targetX = ball.x;
+                targetY = ball.y;
+            }
+            
+            const dx = targetX - cpu.x, dy = targetY - cpu.y, dist = Math.hypot(dx, dy);
+            let moveX = 0, moveY = 0;
+            if (dist > 1) {
+                moveX = (dx / dist) * cpu.speed;
+                moveY = (dy / dist) * cpu.speed;
+            }
+            
+            const isOnOwnSide = cpu.x >= canvas.width / 2;
+            const isTryingToCross = (cpu.x + moveX) < canvas.width / 2;
+            if (!cpu.hasBall && isOnOwnSide && isTryingToCross) moveX = (canvas.width / 2) - cpu.x;
+
+            cpu.x += moveX;
+            cpu.y += moveY;
+
+            if (frameCount % 3 === 0) {
+                cpu.trail.push({ 
+                    x: cpu.x + (Math.random() - 0.5) * cpu.radius, 
+                    y: cpu.y + (Math.random() - 0.5) * cpu.radius, 
+                    life: TRAIL_LIFESPAN, 
+                    isBoost: cpu.boostTimer > 0 
+                });
+            }
+            
+            cpu.x = Math.max(cpu.radius, Math.min(canvas.width - cpu.radius, cpu.x));
+            cpu.y = Math.max(cpu.radius, Math.min(canvas.height - cpu.radius, cpu.y));
+        }
+
+        function handleCpuCollisions() {
+            for (let i = 0; i < cpus.length; i++) {
+                for (let j = i + 1; j < cpus.length; j++) {
+                    const cpu1 = cpus[i], cpu2 = cpus[j];
+                    const dx = cpu2.x - cpu1.x, dy = cpu2.y - cpu1.y;
+                    const distance = Math.hypot(dx, dy);
+                    const minDistance = cpu1.radius + cpu2.radius;
+                    if (distance < minDistance) {
+                        const overlap = minDistance - distance, angle = Math.atan2(dy, dx);
+                        const moveX = (overlap / 2) * Math.cos(angle), moveY = (overlap / 2) * Math.sin(angle);
+                        cpu1.x -= moveX; cpu1.y -= moveY;
+                        cpu2.x += moveX; cpu2.y += moveY;
+                    }
+                }
+            }
+        }
+
+        function moveBall() {
+            let ballHolder = [player1, ...cpus].find(p => p.hasBall);
+            if (ballHolder) {
+                ball.x = ballHolder.x;
+                ball.y = ballHolder.y;
+            } else {
+                ball.x += ball.vx;
+                ball.y += ball.vy;
+                if (ball.y + ball.radius > canvas.height || ball.y - ball.radius < 0) ball.vy *= -1;
+                if (ball.x + ball.radius > canvas.width || ball.x - ball.radius < 0) ball.vx *= -1;
+            }
+        }
+        
+        function updateTrails() {
+            [player1, ...cpus].forEach(player => {
+                player.trail = player.trail.filter(p => p.life > 0);
+                player.trail.forEach(p => p.life--);
+            });
+        }
+
+        function isOnOpponentTrail(player, opponent) {
+            for (const point of opponent.trail) {
+                if (Math.hypot(player.x - point.x, player.y - point.y) < player.radius) return true;
+            }
+            return false;
+        }
+
+        function handleCollisions() {
+            cpus.forEach(cpu => {
+                const p1p2Dist = Math.hypot(player1.x - cpu.x, player1.y - cpu.y);
+                const stealDistance = (player1.radius + cpu.radius) * 0.5; 
+                if (p1p2Dist < stealDistance) {
+                    if (player1.hasBall && cpu.stealCooldown <= 0) {
+                        player1.hasBall = false; cpu.hasBall = true;
+                        player1.stealCooldown = STEAL_COOLDOWN_FRAMES;
+                        cpu.boostTimer = BOOST_DURATION_FRAMES;
+                        return;
+                    } 
+                    if (cpu.hasBall && player1.stealCooldown <= 0) {
+                        cpu.hasBall = false; player1.hasBall = true;
+                        cpu.stealCooldown = STEAL_COOLDOWN_FRAMES;
+                        player1.boostTimer = BOOST_DURATION_FRAMES;
+                        return;
+                    }
+                }
+            });
+
+            const noOneHasBall = ![player1, ...cpus].some(p => p.hasBall);
+            if (noOneHasBall) {
+                if (Math.hypot(player1.x - ball.x, player1.y - ball.y) < player1.radius + ball.radius) player1.hasBall = true;
+                cpus.forEach(cpu => {
+                    if (!player1.hasBall && Math.hypot(cpu.x - ball.x, cpu.y - ball.y) < cpu.radius + ball.radius) {
+                        if (!cpus.some(c => c.hasBall)) cpu.hasBall = true;
+                    }
+                });
+            }
+
+            // Use the globally scaled goalWidth for scoring checks
+            if (player1.hasBall && player1.x > canvas.width - goalWidth) scorePoint(1);
+            cpus.forEach(cpu => {
+                if (cpu.hasBall && cpu.x < goalWidth) scorePoint(2);
+            });
+        }
+        
+        function scorePoint(player) {
+            if (player === 1) p1Score++; else p2Score++;
+            resetPositions();
+        }
+        
+        function resetPositions() {
+            [player1, ...cpus].forEach(p => {
+                p.hasBall = false; p.trail = [];
+                p.stealCooldown = 0; p.boostTimer = 0;
+            });
+            player1.x = canvas.width / 4;
+            player1.y = canvas.height / 2;
+            cpus.forEach(cpu => {
+                cpu.x = (canvas.width / 4) * 3;
+                cpu.y = cpu.initialY;
+            });
+            ball.x = canvas.width / 2; 
+            ball.y = canvas.height / 2;
+            resetBallVelocity();
+        }
+        
+        function resetBallVelocity() {
+            let angle;
+            do {
+                angle = Math.random() * Math.PI * 2;
+            } while (Math.abs(Math.sin(angle)) < 0.2); 
+
+            const speed = 2.5;
+            ball.vx = Math.cos(angle) * speed;
+            ball.vy = Math.sin(angle) * speed;
+        }
+
+        // --- DRAWING FUNCTIONS ---
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            drawField();
+            drawTrails();
+            drawSlime(player1);
+            cpus.forEach(cpu => drawSlime(cpu));
+            drawBall(ball);
+            drawUI();
+            if (joystick.active) drawJoystick();
+
+            if (gameState === 'start') {
+                ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                drawMessage("SLIMEBALL", "Tap to start");
+            }
+        }
+        
+        function drawWavyLine(x1, y1, x2, y2, color) {
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 4;
+            ctx.shadowColor = color;
+            ctx.shadowBlur = 15;
+            const segments = 20, amplitude = 5, frequency = 0.5;
+            ctx.beginPath();
+            ctx.moveTo(x1, y1);
+            for (let i = 0; i <= segments; i++) {
+                const p = i / segments, lx = x1 + (x2 - x1) * p, ly = y1 + (y2 - y1) * p;
+                const wave = Math.sin(p * Math.PI * 2 * frequency + frameCount * 0.1) * amplitude;
+                if (x1 === x2) ctx.lineTo(lx + wave, ly);
+                else ctx.lineTo(lx, ly + wave);
+            }
+            ctx.stroke();
+            ctx.shadowBlur = 0;
+        }
+
+        function drawField() {
+            const goalHeight = canvas.height / 2, goalY = canvas.height / 4;
+            // Use the scaled goalWidth for drawing the goals
+            drawWavyLine(goalWidth, goalY, goalWidth, goalY + goalHeight, cpus[0].color);
+            drawWavyLine(canvas.width - goalWidth, goalY, canvas.width - goalWidth, goalY + goalHeight, player1.color);
+            drawWavyLine(canvas.width / 2, 0, canvas.width / 2, canvas.height, '#666');
+        }
+
+        function drawSlime(slime) {
+            const pointCount = 16;
+            const points = [];
+
+            // Generate points for the outline with a wobbling effect
+            for (let i = 0; i < pointCount; i++) {
+                const angle = (i / pointCount) * Math.PI * 2;
+                // Use the slime's unique animationOffset to de-synchronize the animations
+                const wobble1 = Math.sin(angle * 4 + (frameCount + slime.animationOffset) * 0.05 + slime.x * 0.01) * slime.radius * 0.2;
+                const wobble2 = Math.sin(angle * 7 + (frameCount + slime.animationOffset) * 0.03 - slime.y * 0.01) * slime.radius * 0.15;
+                const currentRadius = slime.radius + wobble1 + wobble2;
+                points.push({
+                    x: slime.x + Math.cos(angle) * currentRadius,
+                    y: slime.y + Math.sin(angle) * currentRadius,
+                });
+            }
+
+            ctx.save();
+            const gradient = ctx.createRadialGradient(slime.x, slime.y, 0, slime.x, slime.y, slime.radius * 1.2);
+            gradient.addColorStop(0, slime.colorLight);
+            gradient.addColorStop(1, slime.color);
+            ctx.fillStyle = gradient;
+            
+            ctx.beginPath();
+            // Start at the midpoint of the last and first points to ensure a closed loop
+            ctx.moveTo((points[pointCount - 1].x + points[0].x) / 2, (points[pointCount - 1].y + points[0].y) / 2);
+
+            // Draw quadratic curves through all points to create a smooth, continuous shape
+            for (let i = 0; i < pointCount; i++) {
+                const p1 = points[i];
+                const p2 = points[(i + 1) % pointCount];
+                const midX = (p1.x + p2.x) / 2;
+                const midY = (p1.y + p2.y) / 2;
+                ctx.quadraticCurveTo(p1.x, p1.y, midX, midY);
+            }
+            
+            ctx.closePath();
+            ctx.fill();
+            
+            // Add a glow effect for better visuals
+            ctx.shadowColor = slime.color;
+            ctx.shadowBlur = 15;
+            ctx.fill();
+
+            ctx.restore();
+        }
+
+
+        function drawBall(b) {
+            const gradient = ctx.createRadialGradient(b.x, b.y, b.radius * 0.5, b.x, b.y, b.radius * 2);
+            gradient.addColorStop(0, 'rgba(255, 255, 255, 0.8)');
+            gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+            ctx.fillStyle = gradient;
+            ctx.beginPath();
+            ctx.arc(b.x, b.y, b.radius * (2 + Math.sin(frameCount * 0.1)), 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = b.color;
+            ctx.beginPath();
+            ctx.arc(b.x, b.y, b.radius, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        
+        function drawTrails() {
+            [player1, ...cpus].forEach(player => {
+                player.trail.forEach(p => {
+                    ctx.save();
+                    ctx.fillStyle = player.color;
+                    ctx.globalAlpha = p.life / TRAIL_LIFESPAN * 0.6;
+                    let trailRadius = (p.life / TRAIL_LIFESPAN) * 5 + 2; 
+                    if (p.isBoost) {
+                        ctx.shadowColor = player.color;
+                        ctx.shadowBlur = 15;
+                        trailRadius *= 1.5;
+                    }
+                    ctx.beginPath();
+                    // Use ellipse for a more "splat" like shape for the trails
+                    ctx.ellipse(p.x, p.y, trailRadius, trailRadius * 0.7, Math.random() * Math.PI * 2, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.restore();
+                });
+            });
+            ctx.globalAlpha = 1.0;
+            ctx.shadowBlur = 0;
+        }
+
+        function drawSlimeText(text, x, y, size, color, shadowColor) {
+            ctx.font = `bold ${size}px 'Londrina Solid'`;
+            ctx.fillStyle = color;
+            ctx.shadowColor = shadowColor;
+            ctx.shadowBlur = 10;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+
+            for(let i = 0; i < text.length; i++) {
+                const charX = x - (ctx.measureText(text).width / 2) + (ctx.measureText(text.substring(0, i)).width) + (ctx.measureText(text[i]).width / 2);
+                const yOffset = Math.sin(frameCount * 0.1 + i * 0.5) * (size * 0.05);
+                ctx.fillText(text[i], charX, y + yOffset);
+            }
+            ctx.shadowBlur = 0;
+        }
+
+        function drawUI() {
+            const scoreSize = Math.max(24, canvas.width * 0.03);
+            drawSlimeText(`P1: ${p1Score}`, canvas.width * 0.25, 40, scoreSize, '#39FF14', '#39FF14');
+            drawSlimeText(`CPU: ${p2Score}`, canvas.width * 0.75, 40, scoreSize, '#FF00FF', '#FF00FF');
+        }
+
+        function drawJoystick() {
+            ctx.beginPath();
+            ctx.arc(joystick.startX, joystick.startY, joystick.radius, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+            ctx.fill();
+
+            ctx.beginPath();
+            ctx.arc(joystick.currentX, joystick.currentY, joystick.handleRadius, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+            ctx.fill();
+        }
+
+        function drawMessage(text, subtext = "") {
+            const titleSize = Math.max(40, canvas.width * 0.06);
+            const subTextSize = titleSize * 0.5;
+            drawSlimeText(text, canvas.width / 2, canvas.height / 2 - (titleSize * 0.6), titleSize, 'white', 'black');
+            if (subtext) {
+                drawSlimeText(subtext, canvas.width / 2, canvas.height / 2 + (subTextSize * 0.6), subTextSize, '#ccc', 'black');
+            }
+        }
+
+        function gameLoop() {
+            frameCount++;
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // --- EVENT LISTENERS ---
+
+        function handleInteraction() {
+            if (gameState === 'start') {
+                gameState = 'playing';
+            }
+        }
+
+        function handleTouchStart(e) {
+            e.preventDefault();
+            if (gameState === 'start') {
+                handleInteraction();
+                return;
+            }
+
+            for (let i = 0; i < e.changedTouches.length; i++) {
+                const touch = e.changedTouches[i];
+                if (joystick.touchId === null && touch.clientX < window.innerWidth / 2) {
+                    joystick.touchId = touch.identifier;
+                    joystick.active = true;
+                    joystick.startX = touch.clientX;
+                    joystick.startY = touch.clientY;
+                    joystick.currentX = touch.clientX;
+                    joystick.currentY = touch.clientY;
+                }
+            }
+        }
+
+        function handleTouchMove(e) {
+            e.preventDefault();
+            for (let i = 0; i < e.changedTouches.length; i++) {
+                const touch = e.changedTouches[i];
+                if (touch.identifier === joystick.touchId) {
+                    const dx = touch.clientX - joystick.startX;
+                    const dy = touch.clientY - joystick.startY;
+                    const dist = Math.hypot(dx, dy);
+                    if (dist > joystick.radius) {
+                        joystick.currentX = joystick.startX + (dx / dist) * joystick.radius;
+                        joystick.currentY = joystick.startY + (dy / dist) * joystick.radius;
+                    } else {
+                        joystick.currentX = touch.clientX;
+                        joystick.currentY = touch.clientY;
+                    }
+                }
+            }
+        }
+
+        function handleTouchEnd(e) {
+            e.preventDefault();
+            for (let i = 0; i < e.changedTouches.length; i++) {
+                const touch = e.changedTouches[i];
+                if (touch.identifier === joystick.touchId) {
+                    joystick.touchId = null;
+                    joystick.active = false;
+                }
+            }
+        }
+
+        window.addEventListener('resize', resizeCanvas);
+        window.addEventListener('keydown', (e) => {
+            if (gameState === 'start') {
+                handleInteraction();
+            }
+            keys[e.key] = true;
+        });
+        window.addEventListener('keyup', (e) => { keys[e.key] = false; });
+        
+        canvas.addEventListener('click', handleInteraction);
+        canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
+        canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
+        canvas.addEventListener('touchend', handleTouchEnd, { passive: false });
+        canvas.addEventListener('touchcancel', handleTouchEnd, { passive: false });
+        
+        // Initial setup
+        resizeCanvas();
+        gameLoop();
+    </script>
+</body>
+</html>
